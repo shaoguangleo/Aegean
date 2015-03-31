@@ -570,9 +570,9 @@ def estimate_parinfo(data, rmsimg, curve, beam, innerclip, outerclip=None, offse
             continue
 
 
-        #allow amp to be 5% or (innerclip) sigma higher
-        #TODO: the 5% should depend on the beam sampling
-        #TODO: when innerclip is 400 this becomes rather stupid
+        # allow amp to be 5% or (innerclip) sigma higher
+        # TODO: the 5% should depend on the beam sampling
+        # when innerclip is 400 this becomes rather stupid
         if amp > 0:
             amp_min, amp_max = 0.95 * min(outerclip * rmsimg[xo, yo], amp), amp * 1.05 + innerclip * rmsimg[xo, yo]
         else:
@@ -595,10 +595,12 @@ def estimate_parinfo(data, rmsimg, curve, beam, innerclip, outerclip=None, offse
         xsize = xmax - xmin + 1
         ysize = ymax - ymin + 1
 
-        # TODO: rename sx/sy/pa to sx, sy, theta
         #initial shape is the pix beam
         sx = pixbeam.a * fwhm2cc
         sy = pixbeam.b * fwhm2cc
+
+        # TODO: this assumes that sx is aligned with the major axis, which it need not be
+        # A proper fix will include the re-calculation of the pixel beam at the given sky location
         # this will make the beam slightly bigger as we move away from zenith
         if global_data.telescope_lat is not None:
             _, dec = pix2sky([xo+offsets[0],yo+offsets[1]])
