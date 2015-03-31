@@ -639,7 +639,6 @@ def estimate_parinfo(data, rmsimg, curve, beam, innerclip, outerclip=None, offse
             logging.debug(" - flags {0}".format(flag))
             logging.debug(" - fit?  {0}".format(not maxxed))
 
-        # TODO: incorporate the max_summits constraint
         # TODO: incorporate the circular constraint
         prefix = "c{0}_".format(i)
         params.add(prefix+'amp',value=amp, min=amp_min, max=amp_max, vary= not maxxed)
