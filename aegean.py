@@ -2565,9 +2565,9 @@ if __name__ == "__main__":
             beam = beam.split()
             print "Beam requires 3 args. You supplied '{0}'".format(beam)
             sys.exit()
-        options.beam = Beam(beam[0], beam[1], np.radians(beam[2]))
+        options.beam = Beam(beam[0], beam[1], beam[2])
         logging.info("Using user supplied beam parameters")
-        logging.info("Beam is {0} deg x {1} deg with pa {2}".format(options.beam.a, options.beam.b, np.degrees(options.beam.pa)))
+        logging.info("Beam is {0} deg x {1} deg with pa {2} deg".format(options.beam.a, options.beam.b, options.beam.pa))
 
     # determine the latitude of the telescope
     if options.telescope is not None:
