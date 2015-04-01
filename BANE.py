@@ -36,7 +36,6 @@ gdata.step_size=None
 gdata.box_size=None
 
             
-#@profile
 def running_filter(xmn,xmx,ymn,ymx):
     """
     A version of running_filter that works on a subset of the data
@@ -178,6 +177,7 @@ def optimum_sections(cores,data_shape):
     logging.debug("Sectioning chosen to be {0[0]}x{0[1]} for a score of {1}".format(best,min_overlap))
     return best
 
+
 def mask_img(data,mask_data):
     """
 
@@ -188,9 +188,17 @@ def mask_img(data,mask_data):
     mask = np.where(np.isnan(mask_data))
     data[mask]=np.NaN
 
-def filter_mc(data,step_size,box_size,cores):
+
+def filter_mc(data,step_size,box_size,cores,rms_out=None,bkg_out=None):
     """
     Perform a running filter over multiple cores
+    :param data:
+    :param step_size:
+    :param box_size:
+    :param cores:
+    :param rms_out: if not None, then the output written to these arrays instead
+    :param bkg_out: if not None, then the output written to these arrays instead
+    :return:
     """
     #set up the global data for the worker nodes to access
     global gdata
@@ -257,22 +265,41 @@ def filter_mc(data,step_size,box_size,cores):
     else:
         #single core we do it all at once
         _,_,_,_,bkg_points,bkg_values,rms_points,rms_values=running_filter(0,img_x,0,img_y)
-    #and do the interpolation etc...
-    (gx,gy) = np.mgrid[0:data.shape[0],0:data.shape[1]]
+
+
+    # and do the interpolation etc...
+    if len(bkg_points)>0 and len(rms_points)>0:
+        (gx,gy) = np.mgrid[0:data.shape[0],0:data.shape[1]]
+
     #if the bkg/rms points have len zero this is because they are all nans so we return
     # arrays of nans
+    # if one of these are given, then don't return output.
+    if (bkg_out is None) and (rms_out is None):
+        rtrn = True
+    else:
+        rtrn = False
+
+    # make empty arrays of the right size
+    if bkg_out is None:
+        bkg_out = np.empty(data.shape)
+    if rms_out is None:
+        rms_out = np.empty(data.shape)
+
     if len(bkg_points)>0:
-        interpolated_bkg = griddata(bkg_points,bkg_values,(gx,gy),method='linear')
+        bkg_out = griddata(bkg_points,bkg_values,(gx,gy),method='linear')
     else:
-        interpolated_bkg=gx*np.nan
+        bkg_out *= np.nan
     if len(rms_points)>0:
-        interpolated_rms = griddata(rms_points,rms_values,(gx,gy),method='linear')
+        rms_out = griddata(rms_points,rms_values,(gx,gy),method='linear')
     else:
-        interpolated_rms=gx*np.nan
+        rms_out *= np.nan
 
     if cores>1:
         del queue, parfilt
-    return interpolated_bkg,interpolated_rms
+    if rtrn:
+        return bkg_out, rms_out
+    return
+
 
 def filter_image(im_name, out_base, step_size=None, box_size=None, twopass=False, cores=None, mask=True, compressed=False):
     """
@@ -329,7 +356,8 @@ def filter_image(im_name, out_base, step_size=None, box_size=None, twopass=False
     logging.info("done")
     if twopass:
         logging.info("running second pass to get a better rms")
-        _,rms=filter_mc(data-bkg,step_size=step_size,box_size=box_size,cores=cores)
+        data -= bkg
+        filter_mc(data,step_size=step_size,box_size=box_size,cores=cores, rms_out = rms)
         logging.info("done")
 
     bkg_out = '_'.join([os.path.expanduser(out_base),'bkg.fits'])
