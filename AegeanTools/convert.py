@@ -137,6 +137,7 @@ def gal_to_eq(l,b):
 #The following functions are explained at http://www.movable-type.co.uk/scripts/latlong.html
 # phi ~ lat ~ Dec
 # lambda ~ lon ~ RA
+# TODO: return/accept angles in radians
 def gcd(ra1,dec1,ra2,dec2):
     """
     Great circle distance as calculated by the haversine formula
