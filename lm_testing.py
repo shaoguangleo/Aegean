@@ -160,6 +160,7 @@ def jacobian(pars,x,data=None):
     return matrix
 
 def jacobian2d(pars,x,y,data=None):
+    # print [ k for k in pars.valuesdict().keys()]
     amp = pars['amp'].value
     xo = pars['xo'].value
     yo = pars['yo'].value
@@ -235,6 +236,10 @@ def print_mat(m):
         for j in i:
             print "{0:3.1e}".format(j),
         print
+
+def rmlabels(ax):
+    ax.set_xticks([])
+    ax.set_yticks([])
 
 def test1d():
     x = np.linspace(-5,5,100)
@@ -871,8 +876,8 @@ def test_lm2d_errs():
     :return:
     """
 
-    nx = 10
-    smoothing = 2./(2*np.sqrt(2*np.log(2))) #5 pixels per beam
+    nx = 13
+    smoothing = 2#2./(2*np.sqrt(2*np.log(2))) #5 pixels per beam
 
     x, y = np.meshgrid(range(nx),range(nx))
     rx, ry = zip(*[ (x[i,j],y[i,j]) for i in range(len(x)) for j in range(len(y))])
@@ -901,12 +906,12 @@ def test_lm2d_errs():
 
     # Create the signal
     s_params = lmfit.Parameters()
-    s_params.add('amp', value=20.0)
+    s_params.add('amp', value=10.0)
     s_params.add('xo', value=1.0*nx/2, min=0.8*nx/2, max=1.2*nx/2)
     s_params.add('yo', value=1.0*nx/2, min=0.8*nx/2, max=1.2*nx/2)
-    s_params.add('major', value=1.*smoothing, min=0.8*smoothing, max=1.2*smoothing)
-    s_params.add('minor', value=1.05*smoothing, min=0.8*smoothing, max=1.2*smoothing)
-    s_params.add('pa', value=0, min=-1.*np.pi, max=np.pi)
+    s_params.add('major', value=2.*smoothing, min=1.8*smoothing, max=2.2*smoothing)
+    s_params.add('minor', value=1.*smoothing, min=0.8*smoothing, max=1.2*smoothing)
+    s_params.add('pa', value=np.pi/3, min=-1.*np.pi, max=np.pi)
 
     signal = residual(s_params, x, y) # returns model as a vector
     signal = signal.reshape(nx,nx)
@@ -939,7 +944,8 @@ def test_lm2d_errs():
         data, mask, shape = ravel_nans(data)
         x_mask = x[mask]
         y_mask = y[mask]
-        if len(x_mask) <=6:
+        if len(x_mask) <6:
+            print n, len(x_mask), '(skip)'
             continue
         else:
             print n,len(x_mask)
@@ -947,9 +953,9 @@ def test_lm2d_errs():
         B = Bmatrix(C)
 
         pars_corr = copy.deepcopy(iparams)
-        mi_corr = lmfit.minimize(residual, pars_corr, args=(x_mask,y_mask, data))#,Dfun=jacobian)
+        mi_corr = lmfit.minimize(residual, pars_corr, args=(x_mask,y_mask, data))#,Dfun=jacobian2d)
         pars_nocorr = copy.deepcopy(iparams)
-        mi_nocorr = lmfit.minimize(residual_nocorr, pars_nocorr, args=(x_mask,y_mask, data))#,Dfun=jacobian)
+        mi_nocorr = lmfit.minimize(residual_nocorr, pars_nocorr, args=(x_mask,y_mask, data))#,Dfun=jacobian2d)
 
 
         if np.all( [pars_corr[i].stderr >0 for i in pars_corr.valuesdict().keys()]):
@@ -1005,32 +1011,42 @@ def test_lm2d_errs():
         fig = pyplot.figure(2,figsize=(6,12))
 
         ax = fig.add_subplot(2,1,1)
-        ax.imshow(data,**kwargs)
+        cb = ax.imshow(data,**kwargs)
         ax.set_title('data')
+
+        cax = pyplot.colorbar(cb)
+        cax.set_label("Flux")
+        cax.set_ticks(range(-1,11))
 
         ax = fig.add_subplot(4,3,7)
         ax.imshow(signal, **kwargs)
         ax.set_title('signal')
+        rmlabels(ax)
 
         ax = fig.add_subplot(4,3,10)
         ax.imshow(noise,**kwargs)
         ax.set_title('noise')
+        rmlabels(ax)
 
         ax = fig.add_subplot(4,3,8)
         ax.imshow(model,**kwargs)
         ax.set_title('model')
+        rmlabels(ax)
 
         ax = fig.add_subplot(4,3,11)
         ax.imshow(data-model,**kwargs)
         ax.set_title('data-model')
+        rmlabels(ax)
 
         ax = fig.add_subplot(4,3,9)
         ax.imshow(model_nocor,**kwargs)
         ax.set_title('model_nocorr')
+        rmlabels(ax)
 
         ax = fig.add_subplot(4,3,12)
         ax.imshow(data-model_nocor,**kwargs)
         ax.set_title('data-model_nocorr')
+        rmlabels(ax)
 
         print "true"
         print_par(s_params)
