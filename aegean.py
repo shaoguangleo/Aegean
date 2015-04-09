@@ -499,8 +499,7 @@ def estimate_parinfo(data, rmsimg, curve, beam, innerclip, outerclip=None, offse
         pixbeam = Beam(1, 1, 0)
 
     #set a circular limit based on the size of the pixbeam
-    xo_lim = int(
-        round(0.5 * np.hypot(pixbeam.a * np.cos(pixbeam.pa), pixbeam.b * np.sin(pixbeam.pa))))
+    xo_lim = 0.5*np.hypot(pixbeam.a, pixbeam.b)
     yo_lim = xo_lim
 
     if debug_on:
@@ -545,10 +544,10 @@ def estimate_parinfo(data, rmsimg, curve, beam, innerclip, outerclip=None, offse
     params = lmfit.Parameters()
     i = 0
     # add summits in reverse order of peak SNR
-    for summit, xmin, xmax, ymin, ymax in sorted(summits, key=lambda x: np.nanmax(-1.*abs(x[0]))):
+    for summit, ymin, ymax, xmin, xmax in sorted(summits, key=lambda x: np.nanmax(-1.*abs(x[0]))):
         summit_flag = is_flag
         if debug_on:
-            logging.debug("Summit({5}) - shape:{0} x:[{1}-{2}] y:[{3}-{4}]".format(summit.shape, xmin, xmax, ymin, ymax, i))
+            logging.debug("Summit({5}) - shape:{0} x:[{1}-{2}] y:[{3}-{4}]".format(summit.shape, ymin, ymax, xmin, xmax, i))
         if isnegative:
             amp = summit[np.isfinite(summit)].min()
         else:
@@ -558,13 +557,13 @@ def estimate_parinfo(data, rmsimg, curve, beam, innerclip, outerclip=None, offse
         if logging.getLogger().isEnabledFor(logging.DEBUG):
             logging.debug(" - max is {0:f}".format(amp))
             logging.debug(" - peak at {0},{1}".format(xpeak, ypeak))
-        xo = xpeak[0] + xmin
         yo = ypeak[0] + ymin
+        xo = xpeak[0] + xmin
 
         # Summits are allowed to include pixels that are between the outer and inner clip
         # This means that sometimes we get a summit that has all it's pixels below the inner clip
         # So we test for that here.
-        snr = np.nanmax(abs(data[xmin:xmax+1,ymin:ymax+1] / rmsimg[xmin:xmax+1,ymin:ymax+1]))
+        snr = np.nanmax(abs(data[ymin:ymax+1,xmin:xmax+1] / rmsimg[ymin:ymax+1,xmin:xmax+1]))
         if snr < innerclip:
             logging.debug("Summit has SNR {0} < innerclip {1}: skipping".format(snr,innerclip))
             continue
@@ -574,26 +573,26 @@ def estimate_parinfo(data, rmsimg, curve, beam, innerclip, outerclip=None, offse
         # TODO: the 5% should depend on the beam sampling
         # when innerclip is 400 this becomes rather stupid
         if amp > 0:
-            amp_min, amp_max = 0.95 * min(outerclip * rmsimg[xo, yo], amp), amp * 1.05 + innerclip * rmsimg[xo, yo]
+            amp_min, amp_max = 0.95 * min(outerclip * rmsimg[yo, xo], amp), amp * 1.05 + innerclip * rmsimg[yo, xo]
         else:
-            amp_max, amp_min = 0.95 * max(-outerclip * rmsimg[xo, yo], amp), amp * 1.05 - innerclip * rmsimg[xo, yo]
+            amp_max, amp_min = 0.95 * max(-outerclip * rmsimg[yo, xo], amp), amp * 1.05 - innerclip * rmsimg[yo, xo]
 
         if debug_on:
             logging.debug("a_min {0}, a_max {1}".format(amp_min, amp_max))
 
-        xo_min, xo_max = max(xmin, xo - xo_lim), min(xmax, xo + xo_lim)
-        if xo_min == xo_max:  #if we have a 1d summit then allow the position to vary by +/-0.5pix
-            xo_min, xo_max = xo_min - 0.5, xo_max + 0.5
-
-        yo_min, yo_max = max(ymin, yo - yo_lim), min(ymax, yo + yo_lim)
+        yo_min, yo_max = max(ymin, yo - xo_lim), min(ymax, yo + yo_lim)
         if yo_min == yo_max:  #if we have a 1d summit then allow the position to vary by +/-0.5pix
             yo_min, yo_max = yo_min - 0.5, yo_max + 0.5
+
+        xo_min, xo_max = max(xmin, xo - yo_lim), min(xmax, xo + yo_lim)
+        if xo_min == xo_max:  #if we have a 1d summit then allow the position to vary by +/-0.5pix
+            xo_min, xo_max = xo_min - 0.5, xo_max + 0.5
 
         #TODO: The limits on sx,sy work well for circular beams or unresolved sources
         #for elliptical beams *and* resolved sources this isn't good and should be redone
 
-        xsize = xmax - xmin + 1
-        ysize = ymax - ymin + 1
+        xsize = ymax - ymin + 1
+        ysize = xmax - xmin + 1
 
         #initial shape is the pix beam
         sx = pixbeam.a * fwhm2cc
@@ -603,7 +602,7 @@ def estimate_parinfo(data, rmsimg, curve, beam, innerclip, outerclip=None, offse
         # A proper fix will include the re-calculation of the pixel beam at the given sky location
         # this will make the beam slightly bigger as we move away from zenith
         if global_data.telescope_lat is not None:
-            _, dec = pix2sky([xo+offsets[0],yo+offsets[1]])
+            _, dec = pix2sky([yo+offsets[0],xo+offsets[1]]) #double check x/y here
             sx /= np.cos(np.radians(dec-global_data.telescope_lat))
 
         #constraints are based on the shape of the island
@@ -612,7 +611,7 @@ def estimate_parinfo(data, rmsimg, curve, beam, innerclip, outerclip=None, offse
 
         #TODO: update this to fit a psf for things that are "close" to a psf.
         #if the min/max of either sx,sy are equal then use a PSF fit
-        if sy_min == sy_max or sx_min == sx_max:
+        if sy_min == sy_max or sx_min == sx_max: # this will never happen
             summit_flag |= flags.FIXED2PSF
 
         theta = theta_limit(pixbeam.pa)
@@ -631,21 +630,21 @@ def estimate_parinfo(data, rmsimg, curve, beam, innerclip, outerclip=None, offse
         if debug_on:
             logging.debug(" - var val min max | min max")
             logging.debug(" - amp {0} {1} {2} ".format(amp, amp_min, amp_max))
-            logging.debug(" - xo {0} {1} {2} ".format(xo, xo_min, xo_max))
-            logging.debug(" - yo {0} {1} {2} ".format(yo, yo_min, yo_max))
+            logging.debug(" - xo {0} {1} {2} ".format(yo, yo_min, yo_max))
+            logging.debug(" - yo {0} {1} {2} ".format(xo, xo_min, xo_max))
             logging.debug(" - sx {0} {1} {2} | {3} {4}".format(sx, sx_min, sx_max, sx_min * cc2fwhm,
                                                                   sx_max * cc2fwhm))
             logging.debug(" - sy {0} {1} {2} | {3} {4}".format(sy, sy_min, sy_max, sy_min * cc2fwhm,
                                                                   sy_max * cc2fwhm))
-            logging.debug(" - pa {0} {1} {2}".format(theta, -1*np.pi, np.pi))
+            logging.debug(" - theta {0} {1} {2}".format(theta, -1*np.pi, np.pi))
             logging.debug(" - flags {0}".format(flag))
             logging.debug(" - fit?  {0}".format(not maxxed))
 
         # TODO: incorporate the circular constraint
         prefix = "c{0}_".format(i)
         params.add(prefix+'amp',value=amp, min=amp_min, max=amp_max, vary= not maxxed)
-        params.add(prefix+'xo',value=xo, min=xo_min, max=xo_max, vary= not maxxed)
         params.add(prefix+'yo',value=yo, min=yo_min, max=yo_max, vary= not maxxed)
+        params.add(prefix+'xo',value=xo, min=xo_min, max=xo_max, vary= not maxxed)
         if summit_flag & flags.FIXED2PSF > 0:
             psf_vary = False
         else:
@@ -721,15 +720,16 @@ def two_d_gaussian_new(x, y, amp, xo, yo, sx, sy, theta):
     :param amp: amplitude of Gaussian
     :param xo,yo: position of Gaussian
     :param major,minor: axes (sigmas)
-    :param theta: position angle (radians)
+    :param theta: position angle (radians) CCW from x-axis
     :return: Gaussian function evaluated at x,y locations
     """
     sint, cost = math.sin(theta), math.cos(theta)
     xxo = x-xo
     yyo = y-yo
-    exp = (xxo*cost + yyo*sint)**2 / sx**2
-    exp+= (-1*xxo*sint + yyo*cost)**2 / sy**2
-    return amp*np.exp(-0.5*exp)
+    exp = (xxo*cost + yyo*sint)**2 / sx**2 \
+        + (xxo*sint - yyo*cost)**2 / sy**2
+    exp *=-1./2
+    return amp*np.exp(exp)
 
 def two_d_gaussian(x, y, amp, xo, yo, sx, sy, theta):
     """
@@ -738,11 +738,12 @@ def two_d_gaussian(x, y, amp, xo, yo, sx, sy, theta):
     sx,sx -> sigmas in pixels
     theta -> radians
     """
-    st, ct, s2t = math.sin(theta)**2,math.cos(theta)**2, math.sin(2*theta)
+    t = theta
+    st, ct, s2t = math.sin(t)**2,math.cos(t)**2, math.sin(2*t)
     a = (ct / sx**2 + st / sy**2) / 2
-    bb = s2t / 4 * (1 / sy**2 - 1 / sx**2)
+    b = s2t * (1 / sx**2 - 1 / sy**2) / 2
     c = (st / sx**2 + ct / sy**2) / 2
-    return amp*np.exp(-1*(a*(x-xo)**2 + 2*bb*(x-xo)*(y-yo) + c*(y-yo)**2) )
+    return amp*np.exp(-1*(a*(x-xo)**2 + b*(x-xo)*(y-yo) + c*(y-yo)**2) )
 
 
 def multi_gaussian(x,y,params):
@@ -761,11 +762,13 @@ def multi_gaussian(x,y,params):
         yo = params[prefix+'yo'].value
         sx = params[prefix+'sx'].value
         sy = params[prefix+'sy'].value
-        theta = theta_limit(params[prefix+'theta'].value)
+        theta = params[prefix+'theta'].value
+        params[prefix+'theta'].value = theta_limit(theta)
         if model is None:
-            model = two_d_gaussian(x,y,amp,xo,yo,sx,sy,theta)
+            model = two_d_gaussian_new(y,x,amp,yo,xo,sx,sy,theta)
         else:
-            model +=two_d_gaussian(x,y,amp,xo,yo,sx,sy,theta)
+
+            model +=two_d_gaussian_new(y,x,amp,yo,xo,sx,sy,theta)
     return model
 
 
@@ -779,6 +782,7 @@ def do_lmfit(data, params):
     """
     # copy the params so as not to change the initial conditions
     # in case we want to use them elsewhere
+    print 'initial',params
     params = copy.deepcopy(params)
     def residual(params,x,y,data=None):
         model= multi_gaussian(x,y,params)
@@ -787,13 +791,16 @@ def do_lmfit(data, params):
         resid = (model-data)
         return resid
 
+
     # convert 2d data into 1d lists, masking out nans in the process
     x,y = np.indices(data.shape)
     data, mask, shape = ravel_nans(data)
-    x = np.ravel(x[mask])
-    y = np.ravel(y[mask])
-
-    result = lmfit.minimize(residual,params, args=(x,y,data))#,Dfun=jacobian2d)
+    print data,mask,shape
+    y_mask = y[mask]
+    x_mask = x[mask]
+    result = lmfit.minimize(residual,params, args=(y_mask,x_mask,data))#,Dfun=jacobian2d)
+    # print unravel_nans(residual(params,y_mask,x_mask),mask,shape)
+    print 'final',params
     return result, params
 
 
@@ -1635,8 +1642,8 @@ def pix2sky_vec(pixel, r, theta):
         r - magnitude in pixels
         theta - in radians
     return:
-    ra,dec - corresponding to pixels x,y
-    r,pa - magnitude and angle (degrees) of the original vector, as measured on the sky
+    ra, dec - corresponding to pixels x,y
+    a, theta - magnitude and angle (radians) of the original vector, as measured on the sky
     """
     ra1, dec1 = pix2sky(pixel)
     x, y = pixel
@@ -1861,7 +1868,9 @@ def fit_island(island_data):
         return []
 
     logging.debug("Rms is {0}".format(np.shape(rms)))
-    logging.debug("Isle is {0}".format(np.shape(idata)))
+    logging.debug("Isle"
+                  " is {0}".format(np.shape(idata)))
+    logging.debug(idata)
     logging.debug(" of which {0} are masked".format(sum(np.isnan(idata).ravel() * 1)))
 
     # TODO: Allow for some of the components to be fit if there are multiple components in the island
@@ -1884,7 +1893,7 @@ def fit_island(island_data):
         if not result.success:
             is_flag = flags.FITERR
 
-    logging.debug(result)
+    logging.debug(model)
 
     # report the source parameters
     sources = []
@@ -1900,12 +1909,12 @@ def fit_island(island_data):
         yo = model[prefix+'yo'].value
         sx = model[prefix+'sx'].value
         sy = model[prefix+'sy'].value
-        theta = theta_limit(model[prefix+'theta'].value)
+        theta = model[prefix+'theta'].value
         amp = model[prefix+'amp'].value
         src_flags |= model[prefix+'flags'].value
 
 
-        print (isle_num,j), "residual", residual, sx*cc2fwhm, sy*cc2fwhm, np.degrees(theta)
+        print (isle_num,j)
         #pixel pos within island +
         # island offset within region +
         # region offset within image +
@@ -1932,13 +1941,13 @@ def fit_island(island_data):
         else:
             major = sy
             axial_ratio = sy/sx #abs(sy*global_data.img.pixscale[1] / (sx * global_data.img.pixscale[0]))
-            theta += np.pi/2
-        (source.ra, source.dec, source.a, source.pa) = pix2sky_vec((x_pix, y_pix), major * cc2fwhm, theta)
-        source.pa = pa_limit(np.degrees(source.pa))
-        source.a *= 3600  # arcseconds
-        source.b = source.a / axial_ratio
+            theta = theta + np.pi/2
 
-        print 'a,b,pa', source.a,source.b,source.pa
+        (source.ra, source.dec, source.a, source.pa) = pix2sky_vec((x_pix, y_pix), major * cc2fwhm, theta)
+        source.a *= 3600  # arcseconds
+        source.b = source.a  / axial_ratio #pix2sky_vec((x_pix, y_pix), sy * cc2fwhm, theta+np.pi/2)[2]*3600
+        source.pa = pa_limit(np.degrees(source.pa))
+        #fix_shape(source)
 
         # if one of these values are nan then there has been some problem with the WCS handling
         if not all(np.isfinite([source.ra, source.dec, source.a, source.pa])):
