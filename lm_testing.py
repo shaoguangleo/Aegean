@@ -42,10 +42,10 @@ def two_d_gaussian(x, y, amp, xo, yo, major, minor, pa):
     pa -> radians
     """
     st, ct, s2t = math.sin(pa)**2,math.cos(pa)**2, math.sin(2*pa)
-    a, bb, c = (ct/major**2 + st/minor**2)/2, \
-                s2t/4 *(1/minor**2-1/major**2),\
+    a, b, c = (ct/major**2 + st/minor**2)/2, \
+                s2t * (1/major**2-1/minor**2) / 2,\
                 (st/major**2 + ct/minor**2)/2
-    return amp*np.exp(-1*(a*(x-xo)**2 + 2*bb*(x-xo)*(y-yo) + c*(y-yo)**2) )
+    return amp*np.exp(-1*(a*(x-xo)**2 + b*(x-xo)*(y-yo) + c*(y-yo)**2) )
 
 def gaussian(x, amp, cen, sigma):
     return amp * np.exp(-0.5*((x-cen)/sigma)**2)
@@ -121,8 +121,8 @@ def Cmatrix2d(x,y,sigmax,sigmay,theta):
     """
 
     # 1.*sigma avoid stupid integer problems within two_d_gaussian
-    f = lambda i: np.ravel(two_d_gaussian(x,y,1,x[i],y[i],1.*sigmax,1.*sigmay,theta))
-    C = np.vstack( [ f(i) for i in xrange(len(x))] )
+    f = lambda i,j: np.ravel(two_d_gaussian(x,y,1,i,j,1.*sigmax,1.*sigmay,theta))
+    C = np.vstack( [ f(i,j) for i,j in zip(x,y)] )
     return C
 
 def test_Cmatrix2d():
@@ -876,13 +876,17 @@ def test_lm2d_errs():
     :return:
     """
 
-    nx = 13
+    nx = 10
+    ny = 13
     smoothing = 2#2./(2*np.sqrt(2*np.log(2))) #5 pixels per beam
 
-    x, y = np.meshgrid(range(nx),range(nx))
-    rx, ry = zip(*[ (x[i,j],y[i,j]) for i in range(len(x)) for j in range(len(y))])
-    rx = np.array(rx)
-    ry = np.array(ry)
+    # x, y = np.meshgrid(range(nx),range(ny))
+    # rx, ry = zip(*[ (x[i,j],y[i,j]) for i in range(len(x)) for j in range(len(y))])
+    # rx = np.array(rx)
+    # ry = np.array(ry)
+    x, y = np.indices((nx,ny))
+    rx = np.ravel(x)
+    ry = np.ravel(y)
     C = Cmatrix2d(rx,ry,smoothing,smoothing,0)
     B = Bmatrix(C)
 
@@ -908,13 +912,13 @@ def test_lm2d_errs():
     s_params = lmfit.Parameters()
     s_params.add('amp', value=10.0)
     s_params.add('xo', value=1.0*nx/2, min=0.8*nx/2, max=1.2*nx/2)
-    s_params.add('yo', value=1.0*nx/2, min=0.8*nx/2, max=1.2*nx/2)
+    s_params.add('yo', value=1.0*ny/2, min=0.8*ny/2, max=1.2*ny/2)
     s_params.add('major', value=2.*smoothing, min=1.8*smoothing, max=2.2*smoothing)
     s_params.add('minor', value=1.*smoothing, min=0.8*smoothing, max=1.2*smoothing)
-    s_params.add('pa', value=np.pi/3, min=-1.*np.pi, max=np.pi)
+    s_params.add('pa', value=0.2, min=-1.*np.pi, max=np.pi)
 
     signal = residual(s_params, x, y) # returns model as a vector
-    signal = signal.reshape(nx,nx)
+    signal = signal.reshape(nx,ny)
 
     # create the initial guess
     iparams = copy.deepcopy(s_params)
@@ -933,7 +937,7 @@ def test_lm2d_errs():
     for n in xrange(3):
 
         np.random.seed(23423 + n)
-        noise = np.random.random((nx,nx))
+        noise = np.random.random((nx,ny))
         noise = gaussian_filter(noise, sigma=[smoothing,smoothing])
         noise -= np.mean(noise)
         noise /= np.std(noise)
@@ -1007,7 +1011,7 @@ def test_lm2d_errs():
                                pars_corr['major'].value,pars_corr['minor'].value,pars_corr['pa'].value)
 
         data = signal+noise #unravel_nans(data,mask,shape)
-        kwargs = {'interpolation':'nearest','cmap':pyplot.cm.cubehelix,'vmin':-1,'vmax':10}
+        kwargs = {'interpolation':'nearest','cmap':pyplot.cm.cubehelix,'vmin':-1,'vmax':10, 'origin':'lower'}
         fig = pyplot.figure(2,figsize=(6,12))
 
         ax = fig.add_subplot(2,1,1)
@@ -1081,11 +1085,263 @@ def test_lm2d_errs():
             print "{0}: diff {1:6.4f}+/-{2:6.4f}, mean(err) {3}".format(val,np.mean(diffs_nocorr[:,i]), np.std(diffs_nocorr[:,i]), np.mean(errs_nocorr[:,i]))
     pyplot.show()
 
+
+def test_lm2d_errs_xyswap():
+    """
+    :return:
+    """
+
+    nhoriz = 14
+    nvert = 10
+    smoothing = 2 #2./(2*np.sqrt(2*np.log(2))) #5 pixels per beam
+
+    y, x = np.indices((nvert,nhoriz))
+    rx = np.ravel(x)
+    ry = np.ravel(y)
+    C = Cmatrix2d(ry,rx,smoothing,smoothing,0)
+    B = Bmatrix(C)
+
+    def residual(pars,y,x,data=None):
+        model = two_d_gaussian(y, x, pars['amp'].value,pars['yo'].value, pars['xo'].value,
+                               pars['major'].value,pars['minor'].value,pars['pa'].value)
+        if data is None:
+            return model
+        resid = (model-data).dot(B)
+        return resid
+
+    def residual_nocorr(pars,y,x,data=None):
+        model = two_d_gaussian(y, x, pars['amp'].value,pars['yo'].value, pars['xo'].value,
+                               pars['major'].value,pars['minor'].value,pars['pa'].value)
+        if data is None:
+            return model
+        resid = (model-data)
+        return resid
+
+    # Create the signal
+    s_params = lmfit.Parameters()
+    s_params.add('amp', value=10.0)
+    s_params.add('xo', value=1.0*nhoriz/2, min=0.8*nhoriz/2, max=1.2*nhoriz/2)
+    s_params.add('yo', value=1.0*nvert/2, min=0.8*nvert/2, max=1.2*nvert/2)
+    s_params.add('major', value=2.*smoothing, min=1.8*smoothing, max=2.2*smoothing)
+    s_params.add('minor', value=1.*smoothing, min=0.8*smoothing, max=1.2*smoothing)
+    s_params.add('pa', value=np.pi/2, min=-1.*np.pi, max=np.pi)
+
+    signal = residual(s_params, y, x) # returns model as a vector
+    signal = signal.reshape(nvert,nhoriz)
+
+    # create the initial guess
+    iparams = copy.deepcopy(s_params)
+    iparams['amp'].value*=1.1
+    iparams['xo'].value-=1
+    iparams['yo'].value+=1
+    iparams['major'].value*=1.05
+    iparams['minor'].value*=0.95
+
+    diffs_corr = []
+    errs_corr = []
+    diffs_nocorr = []
+    errs_nocorr = []
+    crb_corr = []
+
+    for n in xrange(100):
+
+        np.random.seed(23423 + n)
+        noise = np.random.random((nvert,nhoriz))
+        noise = gaussian_filter(noise, sigma=[smoothing,smoothing])
+        noise -= np.mean(noise)
+        noise /= np.std(noise)
+
+        data = signal + noise
+        #mask the data
+        data[data<4] = np.nan
+        data, mask, shape = ravel_nans(data)
+        x_mask = x[mask]
+        y_mask = y[mask]
+        if len(x_mask) <6:
+            print n, len(x_mask), '(skip)'
+            continue
+        else:
+            print n,len(x_mask)
+        C = Cmatrix2d(x_mask,y_mask,smoothing,smoothing,0)
+        B = Bmatrix(C)
+
+        pars_corr = copy.deepcopy(iparams)
+        mi_corr = lmfit.minimize(residual, pars_corr, args=(y_mask,x_mask, data))#,Dfun=jacobian2d)
+
+        pars_nocorr = copy.deepcopy(iparams)
+        mi_nocorr = lmfit.minimize(residual_nocorr, pars_nocorr, args=(y_mask,x_mask, data))#,Dfun=jacobian2d)
+
+
+        if np.all( [pars_corr[i].stderr >0 for i in pars_corr.valuesdict().keys()]):
+            if pars_corr['minor'].value>pars_corr['major'].value:
+                pars_corr['minor'],pars_corr['major'] =pars_corr['major'],pars_corr['minor']
+                pars_corr['pa']+= np.pi/2
+            diffs_corr.append([ s_params[i].value -pars_corr[i].value for i in pars_corr.valuesdict().keys()])
+            errs_corr.append( [pars_corr[i].stderr for i in pars_corr.valuesdict().keys()])
+            #crb_corr.append([ 0 for i in pars_corr.valuesdict().keys()])
+            crb_corr.append( CRB_errs(jacobian2d(s_params,x_mask,y_mask),C))
+        #print mi_corr.nfev, mi_nocorr.nfev
+        #print_par(pars_corr)
+
+        if np.all( [pars_nocorr[i].stderr >0 for i in pars_nocorr.valuesdict().keys()]):
+            if pars_nocorr['minor'].value>pars_nocorr['major'].value:
+                pars_nocorr['minor'],pars_nocorr['major'] =pars_nocorr['major'],pars_nocorr['minor']
+                pars_nocorr['pa']+= np.pi/2
+            diffs_nocorr.append([ s_params[i].value -pars_nocorr[i].value for i in pars_nocorr.valuesdict().keys()])
+            errs_nocorr.append( [pars_nocorr[i].stderr for i in pars_nocorr.valuesdict().keys()])
+
+    diffs_corr = np.array(diffs_corr)
+    errs_corr = np.array(errs_corr)
+    diffs_nocorr = np.array(diffs_nocorr)
+    errs_nocorr = np.array(errs_nocorr)
+    crb_corr = np.array(crb_corr)
+
+    many = n>10
+    from matplotlib import pyplot
+    if many:
+        fig = pyplot.figure(1)
+        ax = fig.add_subplot(121)
+        ax.plot(diffs_corr[:,0], label='amp')
+        ax.plot(diffs_corr[:,1], label='xo')
+        ax.plot(diffs_corr[:,2], label='yo')
+        ax.plot(diffs_corr[:,3], label='major')
+        ax.plot(diffs_corr[:,4], label='minor')
+        ax.plot(diffs_corr[:,5], label='pa')
+        ax.legend()
+
+        ax = fig.add_subplot(122)
+        ax.plot(diffs_nocorr[:,0], label='amp')
+        ax.plot(diffs_nocorr[:,1], label='xo')
+        ax.plot(diffs_nocorr[:,2], label='yo')
+        ax.plot(diffs_nocorr[:,3], label='major')
+        ax.plot(diffs_nocorr[:,4], label='minor')
+        ax.plot(diffs_nocorr[:,5], label='pa')
+        ax.legend()
+
+    if not many:
+
+        model_nocor = residual(pars_nocorr, y, x)
+        model_nocor = model_nocor.reshape(nvert,nhoriz)
+        model = residual(pars_corr,y,x)
+        model = model.reshape(nvert,nhoriz)
+
+        data = signal+noise #unravel_nans(data,mask,shape)
+        kwargs = {'interpolation':'nearest','cmap':pyplot.cm.cubehelix,'vmin':-1,'vmax':10, 'origin':'lower'}
+        fig = pyplot.figure(2,figsize=(6,12))
+
+        ax = fig.add_subplot(2,1,1)
+        cb = ax.imshow(data,**kwargs)
+        ax.set_title('data')
+
+        cax = pyplot.colorbar(cb)
+        cax.set_label("Flux")
+        cax.set_ticks(range(-1,11))
+
+        ax = fig.add_subplot(4,3,7)
+        ax.imshow(signal, **kwargs)
+        ax.set_title('signal')
+        rmlabels(ax)
+
+        ax = fig.add_subplot(4,3,10)
+        ax.imshow(noise,**kwargs)
+        ax.set_title('noise')
+        rmlabels(ax)
+
+        ax = fig.add_subplot(4,3,8)
+        ax.imshow(model,**kwargs)
+        ax.set_title('model')
+        rmlabels(ax)
+
+        ax = fig.add_subplot(4,3,11)
+        ax.imshow(data-model,**kwargs)
+        ax.set_title('data-model')
+        rmlabels(ax)
+
+        ax = fig.add_subplot(4,3,9)
+        ax.imshow(model_nocor,**kwargs)
+        ax.set_title('model_nocorr')
+        rmlabels(ax)
+
+        ax = fig.add_subplot(4,3,12)
+        ax.imshow(data-model_nocor,**kwargs)
+        ax.set_title('data-model_nocorr')
+        rmlabels(ax)
+
+        print "true"
+        print_par(s_params)
+        print "+corr"
+        print_par(pars_corr)
+        print "-corr"
+        print_par(pars_nocorr)
+
+    if False:
+        fig = pyplot.figure(3)
+        C = np.vstack( [ gaussian(x,1., i, 1.*smoothing) for i in x ])
+        #C[C<1e-3]=0.0
+        ax = fig.add_subplot(121)
+        cb = ax.imshow(C,interpolation='nearest',cmap=pyplot.cm.cubehelix)
+        pyplot.colorbar(cb)
+
+        L,Q = eigh(C)
+        print L
+        S = np.diag(1/np.sqrt(abs(L)))
+        B = Q.dot(S)
+
+        ax = fig.add_subplot(122)
+        cb = ax.imshow(B,interpolation='nearest',cmap=pyplot.cm.cubehelix)
+        pyplot.colorbar(cb)
+
+    if many:
+        print " -- corr --"
+        for i,val in enumerate(pars_corr.valuesdict().keys()):
+            print "{0}: diff {1:6.4f}+/-{2:6.4f}, mean(err) {3}, mean(crb_err) {4}".format(val,np.mean(diffs_corr[:,i]),np.std(diffs_corr[:,i]), np.mean(errs_corr[:,i]),np.mean(crb_corr[:,i]))
+        print "-- no corr --"
+        for i,val in enumerate(pars_nocorr.valuesdict().keys()):
+            print "{0}: diff {1:6.4f}+/-{2:6.4f}, mean(err) {3}".format(val,np.mean(diffs_nocorr[:,i]), np.std(diffs_nocorr[:,i]), np.mean(errs_nocorr[:,i]))
+    pyplot.show()
+
+def make_data():
+    nhoriz = 14
+    nvert = 10
+    smoothing = 2
+    y, x = np.indices((nvert,nhoriz))
+
+    def residual(pars,y,x,data=None):
+        model = two_d_gaussian(y, x, pars['amp'].value,pars['yo'].value, pars['xo'].value,
+                               pars['major'].value,pars['minor'].value,pars['pa'].value)
+        if data is None:
+            return model
+        resid = (model-data).dot(B)
+        return resid
+
+    s_params = lmfit.Parameters()
+    s_params.add('amp', value=10.0)
+    s_params.add('xo', value=1.0*nhoriz/2+0.2, min=0.8*nhoriz/2, max=1.2*nhoriz/2)
+    s_params.add('yo', value=1.0*nvert/2-0.1, min=0.8*nvert/2, max=1.2*nvert/2)
+    s_params.add('major', value=2.*smoothing, min=1.8*smoothing, max=2.2*smoothing)
+    s_params.add('minor', value=1.*smoothing, min=0.8*smoothing, max=1.2*smoothing)
+    s_params.add('pa', value=np.pi/3, min=-1.*np.pi, max=np.pi)
+
+    signal = residual(s_params, y, x)
+
+    import astropy.io.fits as fits
+    template = fits.open('Test/Images/1904-66_SIN.fits')
+    template[0].data = signal
+    template.writeto('test.fits', clobber=True)
+    template[0].data*=0
+    template.writeto('test_bkg.fits', clobber=True)
+    template[0].data+=1
+    template.writeto('test_rms.fits', clobber=True)
+
+
+
 if __name__ == '__main__':
     # test2d2()
     # compare()
     # test_lm_corr_noise()
     # test_lm_corr_noise_2d()
-    test_lm2d_errs()
+    # test_lm2d_errs()
+    test_lm2d_errs_xyswap()
     # test_lm1d_errs()
     # test_Cmatrix2d()
+    # make_data()
