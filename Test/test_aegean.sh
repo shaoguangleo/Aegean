@@ -45,9 +45,9 @@ tst "python aegean.py Test/Images/1904-66_SIN.fits --out=out.cat --table=table.x
 tst "python aegean.py Test/Images/1904-66_SIN.fits --measure --input=out.cat --table=kvis.ann"
 
 # do priorized measurements with an input catalog
-tst "python aegean.py Test/Images/1904-66_SIN.fits --input table.vot --priorized 1 --table table_prior.vot"
-tst "python aegean.py Test/Images/1904-66_SIN.fits --input table.vot --priorized 1 --table table_prior.vot --ratio 0.9"
-tst "python aegean.py Test/Images/1904-66_SIN.fits --input table.vot --priorized 1 --table table_prior.vot --ratio 1.4"
+tst "python aegean.py Test/Images/1904-66_SIN.fits --input table_comp.vot --priorized 1 --table table_prior.vot"
+tst "python aegean.py Test/Images/1904-66_SIN.fits --input table_comp.vot --priorized 1 --table table_prior.vot --ratio 0.9"
+tst "python aegean.py Test/Images/1904-66_SIN.fits --input table_comp.vot --priorized 1 --table table_prior.vot --ratio 1.4"
 
 # do island fitting and ouput a ds9 reg file and an sqlite3 database
 tst "python aegean.py Test/Images/1904-66_SIN.fits --island --table=ds9.reg,my.db"
