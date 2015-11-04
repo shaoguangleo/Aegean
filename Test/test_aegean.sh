@@ -23,7 +23,6 @@ return ${code}
 
 
 echo "Testing Aegean"
-rm out.log err.log
 # show module versions
 tst "python aegean.py --versions"
 
@@ -68,12 +67,12 @@ tst "python aegean.py Test/Images/1904-66_SIN.fits --measure --input=out.cat --f
 tst "python aegean.py Test/Images/WCS_edge.fits"
 
 # Test on an image that has a very large island in it. Ideally should finish within 30s.
-echo "This next test will probably fail."
+echo "This next test will probably fail because Aegean is slow for large islands."
 tst "timeout -sHUP 30s python aegean.py --autoload Test/Images/Bright.fits"
 
 echo "to clean up:"
-echo "rm 1904-66_SIN_{bkg,rms}.fits aux_{bkg,rms}.fits out{_comp,_isle}.vot"
-echo "rm out.{cat,db} table_comp.{xml,vo,csv,tex,tab} kvis_simp.ann ds9{_comp,_isle}.reg my.db"
-echo "rm table_proir.vot"
+echo "rm 1904-66_SIN_{bkg,rms}.fits aux_{bkg,rms,crv}.fits out{_comp,_isle}.vot"
+echo "rm out.{cat,db} table_comp.{xml,vot,csv,tex,tab} kvis_simp.ann ds9{_comp,_isle}.reg my.db"
+echo "rm table_proir_comp.vot"
 
 
