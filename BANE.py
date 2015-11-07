@@ -55,6 +55,33 @@ def sigmaclip(arr, lo, hi, reps = 3):
             break
     return clipped, std, mean
 
+def interpolate(region, points, values):
+    """
+    Perform an interpolation, assuming that we are operating over a particular region in the image.
+    :param region: (ymin, ymax, xmin, xmax) - describes a region of the image this data encompasses.
+    :param points: A list of (x,y) values, with indexes into the original image.
+    :param values: A list of floating point values, with len matching the number of points.
+    :return: An ndarray containing the interpolated data.
+    """
+    ymin, ymax, xmin, xmax = region
+    gx, gy = np.mgrid[xmin:xmax, ymin:ymax]
+    return LinearNDInterpolator(points, values)((gx, gy))
+
+def write_to_shared_array(interpolated, xmin, ymin, shape, out):
+    """
+    Copy the interpolated data into the shared memory Array.
+    :param interpolated: An ndarray with interpolated data.
+    :param xmin: The minimum x-value in the region associated with the interpolation.
+    :param ymin: The minimum y-value in the region associated with the interpolation.
+    :param shape: The expected shape of the interpolated data (we should be able to use interpolated.shape, here?)
+    :param out: This is the shared memory Array to use to write out the data.
+    """
+    with out.get_lock():
+        for i, row in enumerate(interpolated):
+            start_idx = np.ravel_multi_index((xmin + i, ymin), shape)
+            end_idx = start_idx + len(row)
+            out[start_idx:end_idx] = row
+    return out
 
 def sigma_filter(filename, region, step_size, box_size, shape, ibkg=None, irms=None):
     """
@@ -164,29 +191,22 @@ def sigma_filter(filename, region, step_size, box_size, shape, ibkg=None, irms=N
     # and if so do the interpolation
     # otherwise pass back our coords and lists so that interpolation can be done elsewhere
     if ibkg is not None and irms is not None:
-        gx,gy = np.mgrid[xmin:xmax,ymin:ymax]
-        ifunc = LinearNDInterpolator(rms_points, rms_values)
-        interpolated_rms = ifunc((gx, gy))
-        with irms.get_lock():
-            for i,row in enumerate(interpolated_rms):
-                start_idx = np.ravel_multi_index((xmin + i, ymin), shape)
-                end_idx = start_idx + len(row)
-                irms[start_idx:end_idx] = row
-
-        ifunc = LinearNDInterpolator(bkg_points, bkg_values)
-        interpolated_bkg = ifunc((gx, gy))
-        with ibkg.get_lock():
-            for i,row in enumerate(interpolated_bkg):
-                start_idx = np.ravel_multi_index((xmin + i,ymin), shape)
-                end_idx = start_idx + len(row)
-                ibkg[start_idx:end_idx] = row
+        interpolated_rms = interpolate(region, rms_points, rms_values)
+        write_to_shared_array(interpolated_rms, xmin, ymin, shape, irms)
+        interpolated_bkg = interpolate(region, bkg_points, bkg_values)
+        write_to_shared_array(interpolated_bkg, xmin, ymin, shape, ibkg)
         logging.debug('{0}x{1},{2}x{3} finished at {4}'.format(xmin, xmax, ymin, ymax,
                                                                strftime("%Y-%m-%d %H:%M:%S", gmtime())))
         return
     else:
+        # FIXME: Assuming this optimisation works correctly, we need to adjust the function return
+        # values for other filters, when there is only one core (as we no longer pass in the ibkg and irms).
+        # Just do the interpolation ourselves, and return the ndarray directly.
+        interpolated_rms = interpolate(region, rms_points, rms_values)
+        interpolated_bkg = interpolate(region, bkg_points, bkg_values)
         logging.debug('{0}x{1},{2}x{3} finished at {4}'.format(xmin, xmax, ymin, ymax,
                                                                strftime("%Y-%m-%d %H:%M:%S", gmtime())))
-        return xmin, xmax, ymin, ymax, bkg_points, bkg_values, rms_points, rms_values
+        return interpolated_bkg, interpolated_rms
 
 
 def running_filter(filename, region, step_size, box_size, shape, ibkg=None, irms=None):
@@ -546,12 +566,13 @@ def filter_mc_sharemem(filename, step_size, box_size, cores, shape, fn=sigma_fil
                 logging.error("Your system can't seem to make a queue, try using --cores=1")
                 raise e
     img_y, img_x = shape
-    # initialise some shared memory
-    alen = shape[0]*shape[1]
-    ibkg = multiprocessing.Array('f', alen)
-    irms = multiprocessing.Array('f', alen)
 
     if cores > 1:
+        # initialise some shared memory
+        alen = shape[0]*shape[1]
+        ibkg = multiprocessing.Array('f', alen)
+        irms = multiprocessing.Array('f', alen)
+
         logging.info("using {0} cores".format(cores))
         nx, ny = optimum_sections(cores, shape)
 
@@ -586,18 +607,17 @@ def filter_mc_sharemem(filename, step_size, box_size, cores, shape, fn=sigma_fil
 
         for _ in queue:  # exhaust the queue - might not actually be needed.
             pass
+        # reshape our 1d arrays back into a 2d image
+        logging.debug("reshaping bkg")
+        interpolated_bkg = np.reshape(ibkg, shape)
+        logging.debug("reshaping rms")
+        interpolated_rms = np.reshape(irms, shape)
+        del queue, parfilt
     else:
         # single core we do it all at once
         region = [0, img_x, 0, img_y]
-        fn(filename, region, step_size, box_size, shape, ibkg, irms)
-    # reshape our 1d arrays back into a 2d image
-    logging.debug("reshaping bkg")
-    interpolated_bkg = np.reshape(ibkg, shape)
-    logging.debug("reshaping rms")
-    interpolated_rms = np.reshape(irms, shape)
+        interpolated_bkg, interpolated_rms = fn(filename, region, step_size, box_size, shape)
 
-    if cores > 1:
-        del queue, parfilt
     return interpolated_bkg, interpolated_rms
 
 
