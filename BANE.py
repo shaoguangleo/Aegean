@@ -32,26 +32,28 @@ def sigmaclip(arr, lo, hi, reps = 3):
      mean - std*lo < c < mean + std*hi
     where mean/std refers to the mean/std of the input array.
 
+    Also return the standard deviation and mean of this final array
+    (since we must compute this as part of the clipping algorithm, and it might be useful to the caller).
+
     I'd like scipy to do this, but it appears that only scipy v0.16+ has a useful sigmaclip function.
 
     :param arr: Input array
     :param lo: Lower limit (mean -std*lo)
     :param hi: Upper limit (mean +std*hi)
     :param reps: maximum number of repetitions of the clipping
-    :return: clipped array
+    :return: clipped array, standard deviation, mean
     """
     clipped = arr[np.isfinite(arr)]
     std = np.std(clipped)
     mean = np.mean(clipped)
     for i in xrange(reps):
-        clipped = clipped[np.where(clipped > mean-std*lo)]
-        clipped = clipped[np.where(clipped < mean+std*hi)]
+        clipped = clipped[ (clipped < mean+std*hi) & (clipped > mean-std*lo) ]
         pstd = std
         std = np.std(clipped)
         mean = np.mean(clipped)
         if 2*abs(pstd-std)/(pstd+std) < 0.2:
             break
-    return clipped
+    return clipped, std, mean
 
 
 def sigma_filter(filename, region, step_size, box_size, shape, ibkg=None, irms=None):
@@ -76,10 +78,14 @@ def sigma_filter(filename, region, step_size, box_size, shape, ibkg=None, irms=N
     logging.debug('{0}x{1},{2}x{3} starting at {4}'.format(xmin, xmax, ymin, ymax,
                                                            strftime("%Y-%m-%d %H:%M:%S", gmtime())))
 
-    cmin = max(0, ymin - box_size[1]/2)
-    cmax = min(shape[1], ymax + box_size[1]/2)
-    rmin = max(0, xmin - box_size[0]/2)
-    rmax = min(shape[0], xmax + box_size[0]/2)
+    # Calculate half of the box size, to use when finding the bounding box centered on a point.
+    half_box_width = box_size[0]/2
+    half_box_height = box_size[1]/2
+
+    cmin = max(0, ymin - half_box_height)
+    cmax = min(shape[1], ymax + half_box_height)
+    rmin = max(0, xmin - half_box_width)
+    rmax = min(shape[0], xmax + half_box_width)
 
     # Figure out how many axes are in the datafile
     NAXIS = fits.getheader(filename)["NAXIS"]
@@ -128,10 +134,10 @@ def sigma_filter(filename, region, step_size, box_size, shape, ibkg=None, irms=N
         calculate the boundaries of the box centered at x,y
         with size = box_size
         """
-        x_min = max(0, x-box_size[0]/2)
-        x_max = min(data.shape[0]-1, x+box_size[0]/2)
-        y_min = max(0, y-box_size[1]/2)
-        y_max = min(data.shape[1]-1, y+box_size[1]/2)
+        x_min = max(0, x-half_box_width)
+        x_max = min(data.shape[0]-1, x+half_box_width)
+        y_min = max(0, y-half_box_height)
+        y_max = min(data.shape[1]-1, y+half_box_height)
         return x_min, x_max, y_min, y_max
 
     bkg_points = []
@@ -141,11 +147,10 @@ def sigma_filter(filename, region, step_size, box_size, shape, ibkg=None, irms=N
 
     for x, y in locations(step_size, xmin, xmax, ymin, ymax):
         x_min, x_max, y_min, y_max = box(x, y)
-        new = data[x_min:x_max, y_min:y_max]
-        new = np.ravel(new)
-        new = sigmaclip(new, 3, 3)
+        # We don't pass in a ravelled array, because sigmaclip can handle an N-dimensional array seamlessly.
+        # It is faster to skip the ravel().
+        new, rms, _ = sigmaclip(data[x_min:x_max, y_min:y_max], 3, 3)
         bkg = np.median(new)
-        rms = np.std(new)
 
         if bkg is not None:
             bkg_points.append((x+rmin, y+cmin))  # these coords need to be indices into the larger array
@@ -527,7 +532,6 @@ def filter_mc_sharemem(filename, step_size, box_size, cores, shape, fn=sigma_fil
     :param fn: the function which performs the filtering
     :return:
     """
-
     if cores is None:
         cores = multiprocessing.cpu_count()
     if cores > 1:
