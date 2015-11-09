@@ -48,8 +48,7 @@ if __name__ == "__main__":
 		sys.exit(1)
 	# Now we can assume that both files have the same mask, so use it to do our subtraction.
 	masked_first = first[mask]
-	matrix_diff = masked_first[abs(masked_first - second[mask]) > 0.00000001]
-	# matrix_diff = first[abs(first - second) > DEFAULT_PRECISION]
+	matrix_diff = masked_first[abs(masked_first - second[mask]) > DEFAULT_PRECISION]
 	if matrix_diff.size:
 		total_entries = first.shape[0]*first.shape[1]
 		print "Files differ: a total of [%s/%s] (%5.1f%%) entries are outside the allowed precision." % (matrix_diff.size,
