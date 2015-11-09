@@ -115,6 +115,8 @@ def sigma_filter(filename, region, step_size, box_size, shape, ibkg=None, irms=N
     rmax = min(shape[0], xmax + half_box_width)
 
     # Figure out how many axes are in the datafile
+    # FIXME: The filter is run a couple of times over the same data -- shouldn't we load this data once and then pass it
+    # into the filter code? Maybe that will allow us to memmap. ??
     NAXIS = fits.getheader(filename)["NAXIS"]
 
     # It seems that I cannot memmap the same file multiple times without errors
@@ -187,27 +189,20 @@ def sigma_filter(filename, region, step_size, box_size, shape, ibkg=None, irms=N
             rms_values.append(rms)
 
     ymin, ymax, xmin, xmax = region
-    # check if we have been passed some shared memory references
-    # and if so do the interpolation
-    # otherwise pass back our coords and lists so that interpolation can be done elsewhere
-    if ibkg is not None and irms is not None:
-        interpolated_rms = interpolate(region, rms_points, rms_values)
-        write_to_shared_array(interpolated_rms, xmin, ymin, shape, irms)
-        interpolated_bkg = interpolate(region, bkg_points, bkg_values)
-        write_to_shared_array(interpolated_bkg, xmin, ymin, shape, ibkg)
-        logging.debug('{0}x{1},{2}x{3} finished at {4}'.format(xmin, xmax, ymin, ymax,
-                                                               strftime("%Y-%m-%d %H:%M:%S", gmtime())))
-        return
-    else:
-        # FIXME: Assuming this optimisation works correctly, we need to adjust the function return
-        # values for other filters, when there is only one core (as we no longer pass in the ibkg and irms).
-        # Just do the interpolation ourselves, and return the ndarray directly.
-        interpolated_rms = interpolate(region, rms_points, rms_values)
-        interpolated_bkg = interpolate(region, bkg_points, bkg_values)
-        logging.debug('{0}x{1},{2}x{3} finished at {4}'.format(xmin, xmax, ymin, ymax,
-                                                               strftime("%Y-%m-%d %H:%M:%S", gmtime())))
-        return interpolated_bkg, interpolated_rms
 
+    # Do the interpolation.
+    interpolated_rms = interpolate(region, rms_points, rms_values)
+    interpolated_bkg = interpolate(region, bkg_points, bkg_values)
+    logging.debug('{0}x{1},{2}x{3} finished at {4}'.format(xmin, xmax, ymin, ymax,
+                                                           strftime("%Y-%m-%d %H:%M:%S", gmtime())))
+    # If we have shared memory handles, we write the interpolated data into the relevant array.
+    if irms is not None:
+        write_to_shared_array(interpolated_rms, xmin, ymin, shape, irms)
+    if ibkg is not None:
+        write_to_shared_array(interpolated_bkg, xmin, ymin, shape, ibkg)
+
+    # Return references to the interpolated data. FIXME: Need to adjust all the other filters to match this behaviour.
+    return interpolated_bkg, interpolated_rms
 
 def running_filter(filename, region, step_size, box_size, shape, ibkg=None, irms=None):
     """
