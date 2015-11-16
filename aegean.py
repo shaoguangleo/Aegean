@@ -73,8 +73,8 @@ import multiprocessing
 __author__ = 'Paul Hancock'
 
 # Aegean version [Updated via script]
-__version__ = 'v1.9.6-130-ge390396'
-__date__ = '2015-11-03'
+__version__ = 'v1.9.6-136-g561f83c'
+__date__ = '2015-11-12'
 
 header = """#Aegean version {0}
 # on dataset: {1}"""
@@ -490,12 +490,15 @@ def result_to_components(result, model, island_data, isflags):
         errors(source, model, global_data.wcshelper)
 
         source.flags = src_flags
-        # add psf info if a psf file has been supplied
-        if global_data.psfhelper.data is not None:
-            a,b,pa = global_data.psfhelper.get_psf_sky(source.ra, source.dec)
-            source.psf_a = a/3600
-            source.psf_b = b/3600
-            source.psf_pa = pa/3600
+        # add psf info
+        local_beam = global_data.psfhelper.get_beam(source.ra, source.dec)
+        a = local_beam.a
+        b = local_beam.b
+        pa = local_beam.pa
+
+        source.psf_a = a*3600
+        source.psf_b = b*3600
+        source.psf_pa = pa*3600
         sources.append(source)
         log.debug(source)
 
@@ -646,10 +649,6 @@ def load_globals(filename, hdu_index=0, bkgin=None, rmsin=None, beam=None, verb=
 
     global_data.wcshelper = WCSHelper.from_header(img.get_hdu_header(), beam, lat)
     global_data.psfhelper = PSFHelper(psf, global_data.wcshelper)
-    # If a psf map was supplied then we add the psf parameters to the list of names of
-    # columns that are going to be written to our tables
-    if global_data.psfhelper.data is not None:
-        OutputSource.names.extend(['psf_a','psf_b','psf_pa'])
 
     global_data.beam = global_data.wcshelper.beam
     global_data.img = img
@@ -1369,11 +1368,11 @@ def fit_island(island_data):
         # C = None
         log.debug("C({0},{1},{2},{3},{4})".format(len(mx),len(my),pixbeam.a*FWHM2CC, pixbeam.b*FWHM2CC, pixbeam.pa))
         errs = np.nanmax(rms)
-        result, model = do_lmfit(idata, params, B=B)
+        result, _ = do_lmfit(idata, params, B=B)
         if not result.errorbars:
             is_flag |= flags.FITERR
         # get the real (sky) parameter errors
-        model = covar_errors(model, idata, errs=errs, B=B, C=C)
+        model = covar_errors(result.params, idata, errs=errs, B=B, C=C)
 
         if not result.success:
             is_flag |= flags.FITERR
