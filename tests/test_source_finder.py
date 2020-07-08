@@ -5,9 +5,11 @@ Test source_finder.py
 
 __author__ = 'Paul Hancock'
 
+from astropy.io import fits
 from AegeanTools import source_finder as sf
 from AegeanTools.wcs_helpers import Beam, WCSHelper
 from AegeanTools import models, flags
+from AegeanTools.models import classify_catalog
 from copy import deepcopy
 import numpy as np
 import logging
@@ -16,6 +18,33 @@ import os
 logging.basicConfig(format="%(module)s:%(levelname)s %(message)s")
 log = logging.getLogger("Aegean")
 log.setLevel(logging.INFO)
+
+
+def test_psf_with_nans():
+    """Test that a psf map with nans doesn't create a crash"""
+    log = logging.getLogger("Aegean")
+    sfinder = sf.SourceFinder(log=log)
+    filename = "tests/test_files/synthetic_test.fits"
+    psf = "tests/test_files/synthetic_test_psf.fits"
+    # create a test psf map with all major axis being nans
+    hdu = fits.open(psf)
+    print(hdu[0].data.shape)
+    hdu[0].data[0,:,:] = np.nan
+    hdu.writeto('dlme_psf.fits')
+
+    try:
+        found = sfinder.find_sources_in_image(filename,
+                                             cores=1, rms=0.5, bkg=0,
+                                             imgpsf='dlme_psf.fits')
+    except AssertionError as e:
+        os.remove('dlme_psf.fits')
+        if 'major' in e.args[0]:
+            raise AssertionError("Broken on psf maps with nans")
+        else:
+            raise
+    else:
+        os.remove('dlme_psf.fits')
+    return
 
 
 def test_misc():
@@ -229,7 +258,30 @@ def test_esimate_lmfit_parinfo():
     return
 
 
+def test_island_contours():
+    """Test that island contours are correct"""
+    log = logging.getLogger("Aegean")
+    sfinder = sf.SourceFinder(log=log)
+    filename = 'tests/test_files/synthetic_test.fits'
+    nsrc = 98
+    nisl = 97
+    ntot = nsrc+nisl
+
+    # vanilla source finding
+    found = sfinder.find_sources_in_image(filename, cores=1, rms=0.5, bkg=0, doislandflux=True)
+
+    components, islands, simples = classify_catalog(found)
+    isle_0_contour = np.array([(41, 405), (41, 406), (41, 407), (42, 407), (42, 408), (42, 409), (43, 409), (43, 410),
+                       (44, 410), (45, 410), (46, 410), (47, 410), (47, 409), (48, 409), (48, 408), (49, 408),
+                       (49, 407), (49, 406), (49, 405), (48, 405), (48, 404), (48, 403), (47, 403), (46, 403),
+                       (45, 403), (44, 403), (43, 403), (43, 404), (42, 404), (42, 405)])
+    if not np.all(np.array(islands[0].contour) == isle_0_contour):
+        raise AssertionError("Island contour for island 0 is incoorect")
+    return
+
+
 # for 3.0 functionality
+
 
 def test_find_islands():
     im = np.ones((10,12), dtype=np.float32)
@@ -322,10 +374,9 @@ def test_estimate_parinfo_image():
 
 
 if __name__ == "__main__":
-    #test_find_islands()
-    #test_estimate_parinfo_image()
-    #import sys
-    #sys.exit()
+    test_island_contours()
+    import sys
+    sys.exit()
     # introspect and run all the functions starting with 'test'
     for f in  dir(): #['test_find_islands', 'test_estimate_parinfo_image', 'test_find_and_prior_sources']:
         if f.startswith('test'):

@@ -106,7 +106,7 @@ def find_islands(im, bkg, rms,
         if np.any(snr[xmin:xmax, ymin:ymax] > seed_clip):  # obey seed clip constraint
             data_box = copy.copy(im[xmin:xmax, ymin:ymax])  # copy so that we don't blank the master data
             data_box[np.where(
-                snr[xmin:xmax, ymin:ymax] < seed_clip)] = np.nan  # blank pixels that are outside the outerclip
+            snr[xmin:xmax, ymin:ymax] < flood_clip)] = np.nan  # blank pixels that are outside the outerclip
             data_box[np.where(l[xmin:xmax, ymin:ymax] != i + 1)] = np.nan  # blank out other summits
             # check if there are any pixels left unmasked
             if not np.any(np.isfinite(data_box)):
@@ -280,10 +280,11 @@ def estimate_parinfo_image(islands,
                 log.debug("a_min {0}, a_max {1}".format(amp_min, amp_max))
 
             # TODO: double check the yo/xo that seem reversed
-            pixbeam = Beam(*wcshelper.get_psf_pix2pix(yo + cmin, xo + rmin))
-            if pixbeam is None:
+            a, b, pa = wcshelper.get_psf_pix2pix(yo + cmin, xo + rmin)
+            if not (np.all(np.isfinite((a, b, pa)))):
                 log.debug(" Summit has invalid WCS/Beam - Skipping.")
                 continue
+            pixbeam = Beam(a, b, pa)
 
             # set a square limit based on the size of the pixbeam
             xo_lim = 0.5 * np.hypot(pixbeam.a, pixbeam.b)
@@ -737,10 +738,11 @@ class SourceFinder(object):
             if debug_on:
                 self.log.debug("a_min {0}, a_max {1}".format(amp_min, amp_max))
 
-            pixbeam = Beam(*global_data.psfhelper.get_psf_pix2pix(yo + offsets[0], xo + offsets[1]))
-            if pixbeam is None:
+            a, b, pa = global_data.psfhelper.get_psf_pix2pix(yo + offsets[0], xo + offsets[1])
+            if not(np.all(np.isfinite((a, b, pa)))):
                 self.log.debug(" Summit has invalid WCS/Beam - Skipping.")
                 continue
+            pixbeam = Beam(a, b, pa)
 
             # set a square limit based on the size of the pixbeam
             xo_lim = 0.5 * np.hypot(pixbeam.a, pixbeam.b)
@@ -1006,8 +1008,8 @@ class SourceFinder(object):
             area = height * width
             source.area = area * source.pixels / source.x_width / source.y_width  # area is in deg^2
 
-            # create contours
-            msq = MarchingSquares(idata)
+            # create contours around the data which was used in fitting
+            msq = MarchingSquares(kappa_sigma)
             source.contour = [(a[0] + xmin, a[1] + ymin) for a in msq.perimeter]
             # calculate the maximum angular size of this island, brute force method
             source.max_angular_size = 0
@@ -1666,10 +1668,12 @@ class SourceFinder(object):
         rms = rmsimg[xmin:xmax, ymin:ymax]
 
         is_flag = 0
-        pixbeam = Beam(*global_data.psfhelper.get_psf_pix2pix((xmin + xmax) / 2., (ymin + ymax) / 2.))
-        if pixbeam is None:
-            # This island is not 'on' the sky, ignore it
+        a, b, pa = global_data.psfhelper.get_psf_pix2pix((xmin + xmax) / 2., (ymin + ymax) / 2.)
+        if not np.all(np.isfinite((a, b, pa))):
+            # This island has no psf or is not 'on' the sky, ignore it
+            self.log.debug("Island has invalid WCS/Beam - Skipping.")
             return []
+        pixbeam = Beam(a, b, pa)
 
         self.log.debug("=====")
         self.log.debug("Island ({0})".format(isle_num))
@@ -2062,8 +2066,13 @@ class SourceFinder(object):
                 imbeam = global_data.psfhelper.get_skybeam(src.ra, src.dec)
                 # If either of the above are None then we skip this source.
                 if catbeam is None or imbeam is None:
+                    unknown = []
+                    if catbeam is None:
+                        unknown.append("input catalogue")
+                    if imbeam is None:
+                        unknown.append("image")
                     src_mask[i] = False
-                    self.log.info("Excluding source ({0.island},{0.source}) due to lack of psf knowledge".format(src))
+                    self.log.info("Excluding source ({0.island},{0.source}) due to lack of psf knowledge in {1}".format(src, ','.join(unknown)))
                     continue
 
                 # TODO: The following assumes that the various psf's are scaled versions of each other
