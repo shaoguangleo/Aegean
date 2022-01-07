@@ -7,12 +7,13 @@ Programs included:
 * MIMAS - The Multi-resolution Image Masking tool for Aegean Software. For creating image regions which can be used to restrict the source finding of Aegean, to mask fits files, and to create ds9 region files.
 * SR6 - A tool for shrinking and growing fits files, such as those created with BANE.py --compress. Shrinking is done by decimation, growing is done by linear interpolation.
 * AeRes - A tool for adding or subtracting sources from an image - "Aegean Residual". Catalogues must be in Aegean readable format (eg, written by Aegean, modified by user). This can be used to look for missed sources, mis-characterised sources, or for simulating new images.
+* AeReg - A tool for adjusting an existing catalogue of sources by regrouping or resizing the components. Uses the same strategies as the Aegean priorized fitting pre-processing.
 
 ^ - by "your" I mean "my"
 
 Installing
 =====
-AegeanTools is built and tested on python 2.7.14, and 3.7.
+AegeanTools is built and tested on python 3.6 and 3.7.
 
 You can install via pip using 
 `pip install git+https://github.com/PaulHancock/Aegean.git` (latest)

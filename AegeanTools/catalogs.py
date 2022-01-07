@@ -154,7 +154,7 @@ def save_catalog(filename, catalog, meta=None, prefix=None):
     - base_simp.ext :class:`AegeanTools.models.SimpleSource`
 
 
-    Where filename = `base.ext`
+    Where filename = base.ext
 
     Parameters
     ----------
@@ -166,7 +166,7 @@ def save_catalog(filename, catalog, meta=None, prefix=None):
         :class:`AegeanTools.models.SimpleSource`, or :class:`AegeanTools.models.IslandSource`.
 
     prefix : str
-        Prepend each column name with "prefix_". Default is to prepend nothing.
+        Prepend each column name with "prefix\_". Default is to prepend nothing.
 
     meta : dict
         Meta data to be written to the output file. Support for metadata depends on file type.
@@ -364,7 +364,7 @@ def write_catalog(filename, catalog, fmt=None, meta=None, prefix=None):
         The file format extension.
 
     prefix : str
-        Prepend each column name with "prefix_". Default is to prepend nothing.
+        Prepend each column name with "prefix\_". Default is to prepend nothing.
 
     meta : dict
         A dictionary to be used as metadata for some file types (fits, VOTable).
@@ -483,6 +483,8 @@ def writeFITSTable(filename, table):
         # Cause error columns to always be floats even when they are set to -1
         if name.startswith('err_'):
             fmt = 'E'
+        elif name == 'uuid':
+            fmt = '{0}A'.format(max(len(val) for val in table[name]))
         else:
             fmt = FITSTableType(table[name][0])
         cols.append(fits.Column(name=name, format=fmt, array=table[name]))

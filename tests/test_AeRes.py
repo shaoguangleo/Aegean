@@ -8,7 +8,7 @@ from __future__ import print_function
 __author__ = 'Paul Hancock'
 
 from AegeanTools import AeRes as ar
-from AegeanTools import wcs_helpers
+from AegeanTools import wcs_helpers, catalogs
 
 from astropy.io import fits
 import numpy as np
@@ -20,12 +20,41 @@ def test_load_sources():
     filename = 'tests/test_files/1904_comp.fits'
     cat = ar.load_sources(filename)
     if cat is None:
-        raise AssertionError("load_sources_failed")
+        raise AssertionError("load_sources failed")
+    return
+
+
+def test_load_soruces_renamed_columns():
+    """Test load_sources with renamed columns"""
+    filename = 'tests/test_files/1904_comp_renamed_cols.fits'
+    colnames = {'ra_col':'RAJ2000',
+                'dec_col':'DEJ2000',
+                'peak_col':'S',
+                'a_col':'bmaj',
+                'b_col':'bmin',
+                'pa_col':'bpa'}
+    cat = ar.load_sources(filename,**colnames)
+    if cat is None:
+        raise AssertionError("load_sources failed with renamed columns")
+    return
+
+
+def test_load_sources_missing_columns():
+    filename = 'tests/test_files/1904_comp.fits'
+    table = catalogs.load_table(filename)
+    table.rename_column('ra', 'RAJ2000')
+    table.write('dlme.fits')
+    cat = ar.load_sources('dlme.fits')
+    if os.path.exists('dlme.fits'):
+        os.remove('dlme.fits')
+
+    if cat is not None:
+        raise AssertionError("Missing columns should be caught, but weren't")
     return
 
 
 def test_make_model():
-    """Test make_modell"""
+    """Test make_model"""
     filename = 'tests/test_files/1904_comp.fits'
     sources = ar.load_sources(filename)
     hdulist = fits.open('tests/test_files/1904-66_SIN.fits')
@@ -43,21 +72,37 @@ def test_make_model():
     if not np.all(model == 0.):
         raise AssertionError("Model is *not* empty")
 
+
+def test_make_masked_model():
+    """Test make_model when a mask is being used"""
+    filename = 'tests/test_files/1904_comp.fits'
+    sources = ar.load_sources(filename)
+    hdulist = fits.open('tests/test_files/1904-66_SIN.fits')
+    wcs_helper = wcs_helpers.WCSHelper.from_header(header=hdulist[0].header)
+
     # test mask with sigma
     model = ar.make_model(sources=sources, shape=hdulist[0].data.shape,
                           wcshelper=wcs_helper, mask=True)
+
+    finite = np.where(np.isfinite(model))
     if np.all(model == 0.):
         raise AssertionError("Model is empty")
     if not np.any(np.isnan(model)):
         raise AssertionError("Model is not masked")
+    if not np.all(model[finite] == 0.):
+        raise AssertionError("Model has values that are not zero or nan")
 
     # test mask with frac
     model = ar.make_model(sources=sources, shape=hdulist[0].data.shape,
                           wcshelper=wcs_helper, mask=True, frac=0.1)
+
+    finite = np.where(np.isfinite(model))
     if np.all(model == 0.):
         raise AssertionError("Model is empty")
     if not np.any(np.isnan(model)):
         raise AssertionError("Model is not masked")
+    if not np.all(model[finite] == 0.):
+        raise AssertionError("Model has values that are not zero or nan")
 
 
 def test_make_residual():

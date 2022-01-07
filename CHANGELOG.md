@@ -1,3 +1,84 @@
+Nov 29
+======
+BANE
+- Allow BANE to run on a single slice of an image cube using the `slice` option (see #86).
+
+Aegean
+- When not providing background/noise images use BANE and pass the `slice` option accordingly.
+- Use the file specified by `--region` when finding islands.
+
+V 2.2.5
+=======
+General
+- Add new script `AeReg` which will perform regrouping/resizing of a catalogue
+- Add github wiki/README for `AeReg`
+
+AeReg
+- New script!
+- Separate regroup/resize operations and add to module `AegeanTools.cluster`
+- Resize will update the size of catalogue components based on the current shape, psf, and either a ratio or a new psf
+- Resize *does not* update the position angle of the sources
+- Regroup will use DBSCAN to perform clustering and then relabel components in to new islands
+- Regrouping radius can be set via `--eps` in arcminutes
+
+Aegean
+- Fix a bug which allowed components of one island to appear in nearby islands (see #158)
+- Update documentation and associated [website](http://aegeantools.rtfd.io/)
+- Change the regrouping algorithm to be crazy fast (compared to stupid slow)
+  - adds `scikit-learn>=0.24.2` as a dependency
+  - see `AeReg` above
+  - use `--regroup-eps` to set the radius, default is 4x the average source major axis size
+
+BANE
+- Update sigma clipping to be better (see #159)
+- Update tests to account for the above
+
+v 2.2.4
+=======
+General
+- Add requirement `tqdm` for progress bars
+- drop explicit support for python 2.x (no longer tested in CI, probably still works)
+
+Aegean
+- Add a progress bar to fitting and refitting islands
+- Remove deprecated options `--telescope` and `--lat`
+
+v 2.2.3
+=======
+Aegean
+- Fixed a bug that caused a crash if the input file was in galactic coordinates
+
+AeRes
+- Fix a bug that caused a model to be subtracted before masking was applied.
+- Allow input catalogue to have non-standard column names. User can map column names using command line options. See `AeRes --help` for details.
+
+v 2.2.2
+=======
+Aegean
+- Fixed a bug that could cause a crash if the psf map had nan values
+- Fixed a bug that caused island contours to just be boxes.
+- Fixed an error in the calculation of condon errors.
+
+MIMAS
+- added new functionality, `--mask2mim`, which will convert a fits file into a region file.
+  - new option `--threshold` will determine which pixels in the input image are in/out of the mask. Default is 1.
+
+BANE
+- fix a bug that would cause a crash if BSCALE was present and not 1.0
+
+AeRes
+- fix a bug that caused a crash when the option `--frac` was used.
+
+v 2.2.1
+=======
+Aegean
+- Source finding metadata (stored in some output files) includes invocation string
+- Fixed a bug in `get_sky_beam` that occurred when either the input or output contained nan
+- Fixed a bug where `seed_clip` was used instead of `flood_clip` in the calculation of islands for fitting
+- Fixed a bug that could occur in proirised fitting when users created UUID strings of variable length
+- Fixed an issue that caused incorrect psf to be computed if the psf and image maps have different size/wcs.
+
+
 v 2.2.0
 =======
 Aegean
