@@ -4,18 +4,14 @@ Script to fix the BEAM info for images created by AIPS
 Will read beam info from HISTORY and put it into the correct fits keywords
 """
 
-from __future__ import print_function
-
-# Modified by Paul Hancock upon incorporation into AegenTools
-
-__author__ = "Guo Shaoguang"
-__version__ = 'v1.0'
-__date__ = '2016-09-29'
-__institute__ = 'Shanghai Astronomical Observatory'
+__author__ = ["Guo Shaoguang", "Paul Hancock"]
+__version__ = "v1.0"
+__date__ = "2016-09-29"
+__institute__ = "Shanghai Astronomical Observatory"
 
 import sys
 import argparse
-from AegeanTools.fits_interp import load_file_or_hdu
+from AegeanTools.fits_tools import load_file_or_hdu
 from AegeanTools.wcs_helpers import fix_aips_header
 
 
@@ -26,22 +22,35 @@ def search_beam(hdulist):
     :return:
     """
     header = hdulist[0].header
-    history = header['HISTORY']
+    history = header["HISTORY"]
     history_str = str(history)
-    #AIPS   CLEAN BMAJ=  1.2500E-02 BMIN=  1.2500E-02 BPA=   0.00
-    if 'BMAJ' in history_str:
+    # AIPS   CLEAN BMAJ=  1.2500E-02 BMIN=  1.2500E-02 BPA=   0.00
+    if "BMAJ" in history_str:
         return True
     else:
         return False
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--infile', dest='infile', default=None, required=True,
-                        help='The input fits file', metavar='<filename>')
+    parser.add_argument(
+        "-i",
+        "--infile",
+        dest="infile",
+        default=None,
+        required=True,
+        help="The input fits file",
+        metavar="<filename>",
+    )
 
-    parser.add_argument('-o', '--outfile', dest='outfile', default='out.fits',
-                        help='The output fits file', metavar='out.fits')
+    parser.add_argument(
+        "-o",
+        "--outfile",
+        dest="outfile",
+        default="out.fits",
+        help="The output fits file",
+        metavar="out.fits",
+    )
     results = parser.parse_args()
 
     if not results.infile:
@@ -55,9 +64,9 @@ if __name__ == '__main__':
 
     if found:
         fix_aips_header(hdulist[0].header)
-        hdulist[0].header['HISTORY'] = "fix_beam.py by {0}".format(__institute__)
-        print('Header has been updated')
-        hdulist.writeto(results.outfile, clobber=True)
+        hdulist[0].header["HISTORY"] = "fix_beam.py by {0}".format(__institute__)
+        print("Header has been updated")
+        hdulist.writeto(results.outfile, overwrite=True)
         print("Wrote {0}".format(results.outfile))
     else:
-        print('Header has not been updated')
+        print("Header has not been updated")

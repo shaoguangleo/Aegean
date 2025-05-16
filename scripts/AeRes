@@ -2,67 +2,10 @@
 """
  Tool for making residual images with Aegean tables as input
 """
-from __future__ import print_function
 
-from AegeanTools.AeRes import make_residual
-
-import logging
-from optparse import OptionParser
 import sys
 
-__author__ = 'Paul Hancock'
-__version__ = 'v0.2.5'
-__date__ = '2017-05-12'
-
-
-# global constants
-
+from AegeanTools.CLI import AeRes
 
 if __name__ == "__main__":
-    usage = "usage: %prog -c input.vot -f image.fits -r residual.fits [-m model.fits]"
-    parser = OptionParser(usage=usage)
-    parser.add_option("-c", "--catalog", dest='catalog', default=None,
-                      help="Catalog in a format that Aegean understands."+
-                      "\nRA/DEC should be in degrees, a/b/pa should be in arcsec/arcsec/degrees.")
-    parser.add_option("-f", "--fitsimage", dest='fitsfile', default=None,
-                      help="Input fits file.")
-    parser.add_option("-r", "--residual", dest='rfile', default=None,
-                      help="Output residual fits file.")
-    parser.add_option('-m', "--model", dest='mfile', default=None,
-                      help="Output model file [optional].")
-    parser.add_option('--add', dest='add', default=False, action='store_true',
-                      help="Add components instead of subtracting them.")
-    parser.add_option('--mask', dest='mask', default=False, action='store_true',
-                      help="Instead of subtracting sources, just mask them")
-    parser.add_option('--sigma', dest='sigma', default=4, type='float',
-                      help='If masking, pixels above this SNR are masked (requires input catalogue to list rms)')
-    parser.add_option('--frac', dest='frac', default=None,
-                      help='If masking, pixels above frac*peak_flux are masked for each source')
-    parser.add_option('--debug', dest='debug', action='store_true', default=False,
-                      help="Debug mode.")
-
-    (options, args) = parser.parse_args()
-
-    logging_level = logging.DEBUG if options.debug else logging.INFO
-    logging.basicConfig(level=logging_level, format="%(process)d:%(levelname)s %(message)s")
-    logging.info("This is AeRes {0}-({1})".format(__version__, __date__))
-
-    if options.catalog is None:
-        logging.error("input catalog is required")
-        parser.print_help()
-        sys.exit(1)
-    if options.fitsfile is None:
-        logging.error("input fits file is required")
-        parser.print_help()
-        sys.exit(1)
-    if options.rfile is None:
-        logging.error("output residual filename is required")
-        parser.print_help()
-        sys.exit(1)
-
-    logging.info("Using {0} and {1} to make {2}".format(options.fitsfile, options.catalog, options.rfile))
-    if options.mfile is not None:
-        logging.info(" and writing model to {0}".format(options.mfile))
-    make_residual(options.fitsfile, options.catalog, options.rfile,
-                  mfile=options.mfile, add=options.add, mask=options.mask, frac=options.frac, sigma=options.sigma)
-    sys.exit(0)
+    sys.exit(AeRes.main(sys.argv[1:]))

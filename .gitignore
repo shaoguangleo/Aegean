@@ -9,7 +9,10 @@ AegeanTools.egg-info
 .cache
 .eggs
 .pytest*
+.coverage
+.coverage.*
 build/
 dist/
 wiki/
 doc/_build/
+.vscode
